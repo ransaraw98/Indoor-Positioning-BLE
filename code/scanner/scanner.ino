@@ -14,10 +14,14 @@
 const char* ssid     = "malmi_villa";
 const char* password = "86467223E";
 const char* mqtt_server = "test.mosquitto.org";
+const char* pubTopic = "fromDEV1"; //wrt to the node red flow
+const char* subTopic = "toDEV1";  //wrt to the node red flow
+
+
 int rssi = 0;
 char rssi_buf[5];
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient MQTTclient(espClient);
 
 //SETUP WIFI
 void setup_wifi() {
@@ -25,17 +29,16 @@ void setup_wifi() {
   delay(10);
   // We start by connecting to a WiFi network
   Serial.println();
-  Serial.print("Connecting to ");
+  Serial.print("Connecting to %s");
   Serial.println(ssid);
 
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
+    //esp_restart();
     delay(500);
     Serial.print(".");
   }
-
-  randomSeed(micros());
 
   Serial.println("");
   Serial.println("WiFi connected");
@@ -45,23 +48,23 @@ void setup_wifi() {
 
 
 // MQTT CONNECTION ////////////////////////////////////////////////////////////////////////////////////////
-void reconnect() {
+void MQTTcnct() {
   // Loop until we're reconnected
-  while (!client.connected()) {
+  while (!MQTTclient.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Create a random client ID
     String clientId = "EN2560Client-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
+    if (MQTTclient.connect(clientId.c_str())) {
+      Serial.println("MQTT broker connected");
       // Once connected, publish an announcement...
-      client.publish("ransara69", "hello world");
+      //client.publish("ransara69", "hello world");
       // ... and resubscribe
-      client.subscribe("ransara699");
+      MQTTclient.subscribe(subTopic);
     } else {
       Serial.print("failed, rc=");
-      Serial.print(client.state());
+      Serial.print(MQTTclient.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       delay(5000);
@@ -69,7 +72,7 @@ void reconnect() {
   }
 }
 
-int scanTime = 5; //In seconds
+int scanTime = 60; //In seconds
 BLEScan* pBLEScan;
 
 //BLE SCAN /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,32 +82,36 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       rssi = advertisedDevice.getRSSI();
       Serial.println(rssi);
       snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-      client.publish("ransara69", rssi_buf);
+      MQTTclient.publish("ransara69", rssi_buf);
     }
 };
 
 void setup() {
   Serial.begin(115200);
+  setCpuFrequencyMhz(80);
+  Serial.println("CPU Frequency is ");
+  Serial.println(getCpuFrequencyMhz());
+  Serial.println("MHz");
   setup_wifi();
-  client.setServer(mqtt_server, 1883);
+  MQTTclient.setServer(mqtt_server, 1883);
   //client.setCallback(callback);
 
   Serial.println("Scanning BLE beacons...");
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-  pBLEScan->setInterval(100);
+  pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
+  pBLEScan->setInterval(5000);
   pBLEScan->setWindow(99);  // less or equal setInterval value
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   //BEGIN MQTT CONNECTION 
-    if (!client.connected()) {
-    reconnect();
+    if (!MQTTclient.connected()) {
+    MQTTcnct();
   }
-  client.loop();
+  MQTTclient.loop();
 
   //
   BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
