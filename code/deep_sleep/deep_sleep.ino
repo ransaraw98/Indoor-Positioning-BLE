@@ -113,16 +113,23 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
 }
 
 
-// BLE callback on beacon receive///////////////////////////////////////////////
+///////////////////// BLE callback on beacon receive///////////////////////////////////////////////
+
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-      //Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
-       if (advertisedDevice.haveManufacturerData() == true)
+      //First case
+    if (advertisedDevice.haveServiceUUID())
+      {
+        BLEUUID devUUID = advertisedDevice.getServiceUUID();
+        Serial.print("Found ServiceUUID: ");
+        Serial.println(devUUID.toString().c_str());
+        Serial.println("");
+        rssi = advertisedDevice.getRSSI();
+        snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
+      }  
+      //Second case iBeacon
+              if (advertisedDevice.haveManufacturerData() == true)
         {
-
-int scanTime = 5; //In seconds
-BLEScan *pBLEScan;
-
           std::string strManufacturerData = advertisedDevice.getManufacturerData();
 
           uint8_t cManufacturerData[100];
@@ -133,15 +140,14 @@ BLEScan *pBLEScan;
             Serial.println("Found an iBeacon!");
             BLEBeacon oBeacon = BLEBeacon();
             oBeacon.setData(strManufacturerData);
-            rssi = advertisedDevice.getRSSI();
-            snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
             Serial.printf("iBeacon Frame\n");
-            Serial.printf("ID: %04X Major: %d Minor: %d UUID: %s RSSI: %d\n", oBeacon.getManufacturerId(), ENDIAN_CHANGE_U16(oBeacon.getMajor()), ENDIAN_CHANGE_U16(oBeacon.getMinor()), oBeacon.getProximityUUID().toString().c_str(), rssi);
+            Serial.printf("ID: %04X Major: %d Minor: %d UUID: %s Power: %d\n", oBeacon.getManufacturerId(), ENDIAN_CHANGE_U16(oBeacon.getMajor()), ENDIAN_CHANGE_U16(oBeacon.getMinor()), oBeacon.getProximityUUID().toString().c_str(), oBeacon.getSignalPower());
+            rssi = advertisedDevice.getRSSI();
+            snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);  
+          }
           }
     }
-    }
 };
-
 /*
 Method to print the reason by which ESP32
 has been awaken from sleep
@@ -206,15 +212,16 @@ void setup(){
   reset occurs.
   */
   Serial.println("BLE Scanning...");
-
-  BLEDevice::init("");
+  int scanTime = 5; //In seconds
+  BLEScan *pBLEScan;
+  BLEDevice::init("DEV_1");             //Initialize BLE 
   pBLEScan = BLEDevice::getScan(); //create new scan
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks()); //like in MQTT, if a beacon is found run the passed callback function
   pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);  // less or equal setInterval value
 
-  BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
+  BLEScanResults foundDevices = pBLEScan->start(scanTime, false); //perform the actual scan
   Serial.print("Devices found: ");
   Serial.println(foundDevices.getCount());
   Serial.println("Scan done!");
