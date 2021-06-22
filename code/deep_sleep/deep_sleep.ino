@@ -62,7 +62,9 @@ void setup_wifi() {
     status = WiFi.begin(ssid, password);
     delay(3000);
     }
-
+  if (strcmp("0.0.0.0",WiFi.localIP().toString().c_str())==0){
+    setup_wifi();
+    }
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
