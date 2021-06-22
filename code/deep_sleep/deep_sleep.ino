@@ -32,7 +32,6 @@ Pranav Cherukupalli <cherukupallip@gmail.com>
 
 RTC_DATA_ATTR int TIME_TO_SLEEP = 15;
 RTC_DATA_ATTR int bootCount = 0;
-RTC_DATA_ATTR int scanTime = 1; //In seconds
 RTC_DATA_ATTR BLEScan* pBLEScan;
 RTC_DATA_ATTR const char* ssid     = "malmi_villa";
 RTC_DATA_ATTR const char* password = "86467223E";
@@ -41,6 +40,12 @@ RTC_DATA_ATTR char rssi_buf[5];
 RTC_DATA_ATTR const char* mqtt_server = "test.mosquitto.org";
 RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
+RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
+RTC_DATA_ATTR int uq_devct =0;
+RTC_DATA_ATTR String detectedUUID[5][2]={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
+RTC_DATA_ATTR String knownUUID[5]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0","0","0","0"};
+RTC_DATA_ATTR bool match;
+RTC_DATA_ATTR bool known;
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -118,15 +123,38 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
       //First case
-    if (advertisedDevice.haveServiceUUID())
+    /* if (advertisedDevice.haveServiceUUID())
       {
         BLEUUID devUUID = advertisedDevice.getServiceUUID();
+        for (int i = 0; i < 5; i++) { //check if this is a known device and set case1 true
+        if (strcmp(devUUID.toString().c_str(), knownUUID[i].c_str()) == 0) 
+        {
+          case1 = true;
+          for (int j = 0; j < 5; i++){
+            if (strcmp(devUUID.toString().c_str(), detectedUUID[i][0]) == 0 )  
+            {
+              known = true;
+            }
+            else known = false;
+            }
+        }
+        }
+     
+      if case1&(!known){ //its a device in the list we do not know
+        detectedUUID[uq_devct][0] = decUUID.toString().c_str(); //add to the UUID section of the detected array
+        rssi = advertisedDevice.getRSSI();
+        snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
+        detectedUUID[uq_devct][1]= rssi.toString();             ////add to the RSSI section of the detected array
+        Serial.println(detectedUUID[uq_devct][0]);
+        Serial.println(detectedUUID[uq_devct][1]);
+        }
         Serial.print("Found ServiceUUID: ");
         Serial.println(devUUID.toString().c_str());
         Serial.println("");
         rssi = advertisedDevice.getRSSI();
         snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-      }  
+    }
+  */
       //Second case iBeacon
               if (advertisedDevice.haveManufacturerData() == true)
         {
@@ -142,12 +170,48 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             oBeacon.setData(strManufacturerData);
             Serial.printf("iBeacon Frame\n");
             Serial.printf("ID: %04X Major: %d Minor: %d UUID: %s Power: %d\n", oBeacon.getManufacturerId(), ENDIAN_CHANGE_U16(oBeacon.getMajor()), ENDIAN_CHANGE_U16(oBeacon.getMinor()), oBeacon.getProximityUUID().toString().c_str(), oBeacon.getSignalPower());
-            rssi = advertisedDevice.getRSSI();
-            snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);  
+          
+
+        for (int i = 0; i < 5; i++) { //check if this is a known device and set match true
+        if (strcmp(oBeacon.getProximityUUID().toString().c_str() , knownUUID[i].c_str()) == 0) 
+        {
+          match = true;
+          Serial.println("Match");
+        }
+        }
+  int pass_index =0;
+         for (int j = 0; j < 5; j++){
+            if (strcmp(oBeacon.getProximityUUID().toString().c_str(), detectedUUID[j][0].c_str()) == 0 )  
+            {
+              known = true;
+              pass_index = j;
+              Serial.println("known");
+              
+              break;
+            }
+            known = false;
+            }
+      if (match&(!known)){ //its a device in the list we havent seen before
+        detectedUUID[uq_devct][0] = oBeacon.getProximityUUID().toString().c_str(); //add to the UUID section of the detected array
+        rssi = advertisedDevice.getRSSI();
+        snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
+        detectedUUID[uq_devct][1]= rssi_buf;             ////add to the RSSI section of the detected array
+        Serial.println(detectedUUID[uq_devct][0]);
+        Serial.println(detectedUUID[uq_devct][1]);
+        uq_devct++;
+        }
+      if(match&known){ //device in the list marked as known, just have to update its RSSI
+          rssi = advertisedDevice.getRSSI();
+          snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
+          detectedUUID[pass_index][1] = rssi_buf;
+        
+        }
           }
           }
     }
 };
+
+
 /*
 Method to print the reason by which ESP32
 has been awaken from sleep
@@ -211,8 +275,7 @@ void setup(){
   sleep was started, it will sleep forever unless hardware
   reset occurs.
   */
-  Serial.println("BLE Scanning...");
-  int scanTime = 5; //In seconds
+  ////////////////////////////////////BLE SCAN INITIALIZATION/////////////////////////////////////////////
   BLEScan *pBLEScan;
   BLEDevice::init("DEV_1");             //Initialize BLE 
   pBLEScan = BLEDevice::getScan(); //create new scan
@@ -221,7 +284,10 @@ void setup(){
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);  // less or equal setInterval value
 
-  BLEScanResults foundDevices = pBLEScan->start(scanTime, false); //perform the actual scan
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  Serial.println("BLE Scanning...");
+  BLEScanResults foundDevices = pBLEScan->start(3, false); //perform the actual scan
   Serial.print("Devices found: ");
   Serial.println(foundDevices.getCount());
   Serial.println("Scan done!");
