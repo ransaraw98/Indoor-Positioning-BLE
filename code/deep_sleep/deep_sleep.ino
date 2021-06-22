@@ -15,9 +15,9 @@ This code is under Public Domain License.
 Author:
 Pranav Cherukupalli <cherukupallip@gmail.com>
 */
-
+#define LED 2
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  15        /* Time ESP32 will go to sleep (in seconds) */
+//#define TIME_TO_SLEEP  15        /* Time ESP32 will go to sleep (in seconds) */
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
@@ -30,6 +30,7 @@ Pranav Cherukupalli <cherukupallip@gmail.com>
 
 #define ENDIAN_CHANGE_U16(x) ((((x)&0xFF00) >> 8) + (((x)&0xFF) << 8))
 
+RTC_DATA_ATTR int TIME_TO_SLEEP = 15;
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR int scanTime = 1; //In seconds
 RTC_DATA_ATTR BLEScan* pBLEScan;
@@ -39,7 +40,7 @@ RTC_DATA_ATTR int rssi = 0;
 RTC_DATA_ATTR char rssi_buf[5];
 RTC_DATA_ATTR const char* mqtt_server = "test.mosquitto.org";
 RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
-RTC_DATA_ATTR const char* subTopic = "toDEV1ran";  //wrt to the node red flow
+RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -65,6 +66,7 @@ void setup_wifi() {
 
 // MQTT CONNECTION ////////////////////////////////////////////////////////////////////////////////////////
 void MQTTcnct() {
+  int attempts =0;
   // Loop until we're reconnected
   while (!MQTTclient.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -77,16 +79,39 @@ void MQTTcnct() {
       // Once connected, publish an announcement...
       //MQTTclient.publish(pubTopic, "hello world");
       // ... and resubscribe
-      MQTTclient.subscribe(subTopic);
+      MQTTclient.subscribe(tsleep);
+      MQTTclient.setCallback(MQTTcallback);
     } else {
+      if(attempts >=5){
+        setup_wifi();
+        }
+      if(attempts >10){
+        ESP.restart();
+        }
       Serial.print("failed, rc=");
       Serial.print(MQTTclient.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
+      attempts++;
       delay(5000);
+      
     }
   }
 }
+//////////////////////// MQTT CALLBACK /////////////////////////////////////////
+void MQTTcallback(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic,"toDEV1_tsleep")==0){
+    digitalWrite(LED,HIGH);
+    char temp[length];
+    for (int i =0; i<length; i++){
+      temp[i] = payload[i];
+      }
+    TIME_TO_SLEEP = atoi(temp);
+    // whatever you want for this topic
+  }
+ 
+}
+
 
 // BLE callback on beacon receive///////////////////////////////////////////////
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
@@ -138,6 +163,8 @@ void print_wakeup_reason(){
 }
 
 void setup(){
+  pinMode(LED,OUTPUT);
+  digitalWrite(LED,LOW);
   setCpuFrequencyMhz(80);
   Serial.begin(115200);
   delay(1000); //Take some time to open up the Serial Monitor
@@ -198,7 +225,7 @@ void setup(){
   MQTTcnct();
   MQTTclient.publish(pubTopic, rssi_buf);
   uint32_t loopStart = millis(); 
-  while (millis() - loopStart < 5000) { 
+  while (millis() - loopStart < 15000) { 
     if (!MQTTclient.connected()) { 
       MQTTcnct(); } 
     else MQTTclient.loop(); 
