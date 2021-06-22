@@ -42,10 +42,13 @@ RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
-RTC_DATA_ATTR String detectedUUID[5][2]={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
+RTC_DATA_ATTR String detectedUUID[5][3];
+//={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
 RTC_DATA_ATTR String knownUUID[5]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0","0","0","0"};
 RTC_DATA_ATTR bool match;
 RTC_DATA_ATTR bool known;
+RTC_DATA_ATTR bool inRange;
+RTC_DATA_ATTR int SSlimit = -80;
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -144,7 +147,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         for (int i = 0; i < 5; i++) { //check if this is a known device and set match true
         if (strcmp(oBeacon.getProximityUUID().toString().c_str() , knownUUID[i].c_str()) == 0) 
         {
-          match = true;
+          match = true; 
           Serial.println("Match");
         }
         }
@@ -165,15 +168,28 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       if (match&(!known)){ //its a device in the list we havent seen before
         detectedUUID[uq_devct][0] = oBeacon.getProximityUUID().toString().c_str(); //add to the UUID section of the detected array
         rssi = advertisedDevice.getRSSI();
+        if(rssi> SSlimit){
+          detectedUUID[uq_devct][2] = "IN";
+          }
+        else{
+          detectedUUID[uq_devct][2] = "OUT";
+          }
         snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
         detectedUUID[uq_devct][1]= rssi_buf;             ////add to the RSSI section of the detected array
         Serial.println(detectedUUID[uq_devct][0]);
         Serial.println(detectedUUID[uq_devct][1]);
         uq_devct++;
         match = false;
+        
         }
       if(match&known){ //device in the list marked as known, just have to update its RSSI
           rssi = advertisedDevice.getRSSI();
+           if(rssi> SSlimit){
+          detectedUUID[pass_index][2] = "IN";
+          }
+          else{
+          detectedUUID[pass_index][2] = "OUT";
+          }
           snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
           detectedUUID[pass_index][1] = rssi_buf;
           known = false;
@@ -277,7 +293,7 @@ void setup(){
     else MQTTclient.loop(); 
     } 
   for(int i =0; i <5;i++){
-    Serial.printf("RSSI %d is %s\n",i,detectedUUID[i][1]);
+    Serial.printf("RSSI %d is %s and is %s range \n",i,detectedUUID[i][1],detectedUUID[i][2]);
     }
   Serial.println("Going to sleep now");
   Serial.flush();
