@@ -124,40 +124,7 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-      //First case
-    /* if (advertisedDevice.haveServiceUUID())
-      {
-        BLEUUID devUUID = advertisedDevice.getServiceUUID();
-        for (int i = 0; i < 5; i++) { //check if this is a known device and set case1 true
-        if (strcmp(devUUID.toString().c_str(), knownUUID[i].c_str()) == 0) 
-        {
-          case1 = true;
-          for (int j = 0; j < 5; i++){
-            if (strcmp(devUUID.toString().c_str(), detectedUUID[i][0]) == 0 )  
-            {
-              known = true;
-            }
-            else known = false;
-            }
-        }
-        }
-     
-      if case1&(!known){ //its a device in the list we do not know
-        detectedUUID[uq_devct][0] = decUUID.toString().c_str(); //add to the UUID section of the detected array
-        rssi = advertisedDevice.getRSSI();
-        snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-        detectedUUID[uq_devct][1]= rssi.toString();             ////add to the RSSI section of the detected array
-        Serial.println(detectedUUID[uq_devct][0]);
-        Serial.println(detectedUUID[uq_devct][1]);
-        }
-        Serial.print("Found ServiceUUID: ");
-        Serial.println(devUUID.toString().c_str());
-        Serial.println("");
-        rssi = advertisedDevice.getRSSI();
-        snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-    }
-  */
-      //Second case iBeacon
+      //iBeacon
               if (advertisedDevice.haveManufacturerData() == true)
         {
           std::string strManufacturerData = advertisedDevice.getManufacturerData();
@@ -182,6 +149,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         }
         }
   int pass_index =0;
+        if(match){
          for (int j = 0; j < 5; j++){
             if (strcmp(oBeacon.getProximityUUID().toString().c_str(), detectedUUID[j][0].c_str()) == 0 )  
             {
@@ -193,6 +161,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             }
             known = false;
             }
+        }
       if (match&(!known)){ //its a device in the list we havent seen before
         detectedUUID[uq_devct][0] = oBeacon.getProximityUUID().toString().c_str(); //add to the UUID section of the detected array
         rssi = advertisedDevice.getRSSI();
@@ -201,12 +170,14 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         Serial.println(detectedUUID[uq_devct][0]);
         Serial.println(detectedUUID[uq_devct][1]);
         uq_devct++;
+        match = false;
         }
       if(match&known){ //device in the list marked as known, just have to update its RSSI
           rssi = advertisedDevice.getRSSI();
           snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
           detectedUUID[pass_index][1] = rssi_buf;
-        
+          known = false;
+          match = false;
         }
           }
           }
@@ -305,8 +276,9 @@ void setup(){
       MQTTcnct(); } 
     else MQTTclient.loop(); 
     } 
-
-  Serial.printf("RSSI BUFFER %s \n",rssi_buf);
+  for(int i =0; i <5;i++){
+    Serial.printf("RSSI %d is %s\n",i,detectedUUID[i][1]);
+    }
   Serial.println("Going to sleep now");
   Serial.flush();
   esp_deep_sleep_start();
