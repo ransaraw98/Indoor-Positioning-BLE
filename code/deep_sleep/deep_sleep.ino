@@ -91,7 +91,7 @@ void MQTTcnct() {
       // ... and resubscribe
       MQTTclient.subscribe(tsleep);
       MQTTclient.setCallback(MQTTcallback);
-    } else {
+    } else {                                //this part handles if MQTT connection fails after a successful WiFi connection
       if(attempts >=5){
         setup_wifi();
         }
@@ -103,7 +103,7 @@ void MQTTcnct() {
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       attempts++;
-      delay(5000);
+      delay(3000);
       
     }
   }
