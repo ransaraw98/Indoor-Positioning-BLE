@@ -37,14 +37,14 @@ RTC_DATA_ATTR const char* ssid     = "malmi_villa";
 RTC_DATA_ATTR const char* password = "86467223E";
 RTC_DATA_ATTR int rssi = 0;
 RTC_DATA_ATTR char rssi_buf[5];
-RTC_DATA_ATTR const char* mqtt_server = "test.mosquitto.org";
+RTC_DATA_ATTR const char* mqtt_server = "192.168.1.113";
 RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
 RTC_DATA_ATTR String detectedUUID[5][3];
 //={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
-RTC_DATA_ATTR String knownUUID[5]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0","0","0","0"};
+RTC_DATA_ATTR String knownUUID[6]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0a8ff39a-1689-409b-8d4c-14444b06d438","6a408c2b-d200-03b3-c249-1cd0da2de6af","af8d5bfc-ce32-3cab-a24a-649478a08f11","43ade1c5-8f74-758a-0c47-2425c116befd","9c5aeb7f-620d-b293-ea4a-c8e1c306ba7b"};
 RTC_DATA_ATTR bool match;
 RTC_DATA_ATTR bool known;
 RTC_DATA_ATTR bool inRange;
@@ -89,7 +89,7 @@ void MQTTcnct() {
       // Once connected, publish an announcement...
       //MQTTclient.publish(pubTopic, "hello world");
       // ... and resubscribe
-      MQTTclient.subscribe(tsleep);
+      MQTTclient.subscribe(tsleep,1);
       MQTTclient.setCallback(MQTTcallback);
     } else {                                //this part handles if MQTT connection fails after a successful WiFi connection
       if(attempts >=5){
@@ -162,7 +162,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
               
               break;
             }
+            else{
             known = false;
+            }
             }
         }
       if (match&(!known)){ //its a device in the list we havent seen before
@@ -178,9 +180,16 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         detectedUUID[uq_devct][1]= rssi_buf;             ////add to the RSSI section of the detected array
         Serial.println(detectedUUID[uq_devct][0]);
         Serial.println(detectedUUID[uq_devct][1]);
-        uq_devct++;
-        match = false;
+        if(uq_devct <4){
+          uq_devct++;
+          }
+        else{
+          uq_devct =0;
+          }
         
+        
+        match = false;
+        known = false;
         }
       if(match&known){ //device in the list marked as known, just have to update its RSSI
           rssi = advertisedDevice.getRSSI();
