@@ -17,7 +17,12 @@ Pranav Cherukupalli <cherukupallip@gmail.com>
 */
 #define LED 2
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+#define ENDIAN_CHANGE_U16(x) ((((x)&0xFF00) >> 8) + (((x)&0xFF) << 8))
+#define MAX_NO_DEV 5
+#define MQTT_MSG_BUF 128
+
 //#define TIME_TO_SLEEP  15        /* Time ESP32 will go to sleep (in seconds) */
+#include <stdio.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
@@ -28,8 +33,8 @@ Pranav Cherukupalli <cherukupallip@gmail.com>
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-#define ENDIAN_CHANGE_U16(x) ((((x)&0xFF00) >> 8) + (((x)&0xFF) << 8))
 
+ 
 RTC_DATA_ATTR int TIME_TO_SLEEP = 15;
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR BLEScan* pBLEScan;
@@ -42,13 +47,15 @@ RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
-RTC_DATA_ATTR String detectedUUID[5][3];
+RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][3];
 //={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
 RTC_DATA_ATTR String knownUUID[6]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0a8ff39a-1689-409b-8d4c-14444b06d438","6a408c2b-d200-03b3-c249-1cd0da2de6af","af8d5bfc-ce32-3cab-a24a-649478a08f11","43ade1c5-8f74-758a-0c47-2425c116befd","9c5aeb7f-620d-b293-ea4a-c8e1c306ba7b"};
 RTC_DATA_ATTR bool match;
 RTC_DATA_ATTR bool known;
 RTC_DATA_ATTR bool inRange;
 RTC_DATA_ATTR int SSlimit = -80;
+RTC_DATA_ATTR bool match_dev = false;
+int dev_count =0;
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -136,7 +143,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
           strManufacturerData.copy((char *)cManufacturerData, strManufacturerData.length(), 0);
 
           if (strManufacturerData.length() == 25 && cManufacturerData[0] == 0x4C && cManufacturerData[1] == 0x00)
-          {
+          { dev_count++;
             Serial.println("Found an iBeacon!");
             BLEBeacon oBeacon = BLEBeacon();
             oBeacon.setData(strManufacturerData);
@@ -149,10 +156,15 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         {
           match = true; 
           Serial.println("Match");
+          break;
         }
+        else{
+          match =false;
+          }
         }
   int pass_index =0;
         if(match){
+          match_dev = true;
          for (int j = 0; j < 5; j++){
             if (strcmp(oBeacon.getProximityUUID().toString().c_str(), detectedUUID[j][0].c_str()) == 0 )  
             {
@@ -167,8 +179,17 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             }
             }
         }
-      if (match&(!known)){ //its a device in the list we havent seen before
-        detectedUUID[uq_devct][0] = oBeacon.getProximityUUID().toString().c_str(); //add to the UUID section of the detected array
+      if ((match)&&(!known)){ //its a device in the list we havent seen before
+        //Serial.print("DEBUG ");
+        char temp_buf[50];
+        //String temp = oBeacon.getProximityUUID().toString().c_str();
+        snprintf(temp_buf,50,"%s",oBeacon.getProximityUUID().toString().c_str());
+        /*for(int i=0;i<37;i++){
+          temp_buf[i] = temp[i];
+          }*/
+        //Serial.println(temp_buf);
+        detectedUUID[uq_devct][0] = temp_buf;
+        //detectedUUID[uq_devct][0] = oBeacon.getProximityUUID().toString().c_str(); //add to the UUID section of the detected array
         rssi = advertisedDevice.getRSSI();
         if(rssi> SSlimit){
           detectedUUID[uq_devct][2] = "IN";
@@ -186,11 +207,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         else{
           uq_devct =0;
           }
-        
-        
-        match = false;
-        known = false;
         }
+
+        
       if(match&known){ //device in the list marked as known, just have to update its RSSI
           rssi = advertisedDevice.getRSSI();
            if(rssi> SSlimit){
@@ -201,8 +220,6 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
           }
           snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
           detectedUUID[pass_index][1] = rssi_buf;
-          known = false;
-          match = false;
         }
           }
           }
@@ -231,10 +248,11 @@ void print_wakeup_reason(){
 }
 
 void setup(){
+  Serial.begin(115200);
+  Serial.printf("Device count %d\n",dev_count);
   pinMode(LED,OUTPUT);
   digitalWrite(LED,LOW);
   setCpuFrequencyMhz(80);
-  Serial.begin(115200);
   delay(1000); //Take some time to open up the Serial Monitor
   Serial.println(getCpuFrequencyMhz());
   
@@ -285,16 +303,48 @@ void setup(){
   ////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   Serial.println("BLE Scanning...");
-  BLEScanResults foundDevices = pBLEScan->start(3, false); //perform the actual scan
+  BLEScanResults foundDevices = pBLEScan->start(3, false); //perform the actual scan, false is to clear already scanned devices
   Serial.print("Devices found: ");
   Serial.println(foundDevices.getCount());
   Serial.println("Scan done!");
   pBLEScan->clearResults();
+Serial.println(dev_count);
+  if (dev_count==0){
+    match_dev =false;
+    Serial.println("No BLE devices in the area, I'm going to sleep");
+    esp_deep_sleep_start();
+    }
+  /*bool IN_RANGE = false; // in range flag
+  for(int i =0;i<MAX_NO_DEV;i++){
+      if(strcmp(detectedUUID[i][2],"IN")==0){
+      IN_RANGE = true;
+      break;
+      }
+    }
+*/
+  else{
+    setup_wifi();
+    MQTTclient.setServer(mqtt_server, 1883);  
+    MQTTcnct();
+    for(int i=0;i<MAX_NO_DEV;i++){
+      Serial.println("In da loop");
+      char pubmsg[MQTT_MSG_BUF];
+      char temp1[37];
+      detectedUUID[i][0].toCharArray(temp1,37);
+      Serial.println("");
+      //Serial.println(detectedUUID[i][0]);
+      snprintf(pubmsg, MQTT_MSG_BUF,"{\"DEV\":\"1\",\"UUID\":\"%s\",\"RSSI\":\"%s\",\"RANGE\":\"%s\"}",temp1,detectedUUID[i][1],detectedUUID[i][2]);
+      Serial.printf("pubmsg %s\n",pubmsg);
+      MQTTclient.publish(pubTopic,pubmsg);
+      uint32_t loopStart = millis(); 
+      while (millis() - loopStart < 100) { 
+          if (!MQTTclient.connected()) { 
+            MQTTcnct(); } 
+          else MQTTclient.loop(); 
+    } 
+      }
 
-  setup_wifi();
-  MQTTclient.setServer(mqtt_server, 1883);
-  MQTTcnct();
-  MQTTclient.publish(pubTopic, rssi_buf);
+      }
   uint32_t loopStart = millis(); 
   while (millis() - loopStart < 15000) { 
     if (!MQTTclient.connected()) { 
