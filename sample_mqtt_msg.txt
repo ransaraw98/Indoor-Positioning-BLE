@@ -1,0 +1,6 @@
+{
+  "UUID": "80c350a9-f603-26b0-ae4d-67292f81dab9",
+  "SCANNER": "2",
+  "RSSI": "-61",
+  "RANGE": "IN"
+}

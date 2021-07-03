@@ -42,20 +42,23 @@ RTC_DATA_ATTR const char* ssid     = "malmi_villa";
 RTC_DATA_ATTR const char* password = "86467223E";
 RTC_DATA_ATTR int rssi = 0;
 RTC_DATA_ATTR char rssi_buf[5];
-RTC_DATA_ATTR const char* mqtt_server = "192.168.1.113";
-RTC_DATA_ATTR const char* pubTopic = "fromDEV1ran"; //wrt to the node red flow
-RTC_DATA_ATTR const char* tsleep = "toDEV1_tsleep";  //wrt to the node red flow
+RTC_DATA_ATTR const char* mqtt_server = "192.168.1.14";
+RTC_DATA_ATTR const char* pubTopic = "fromDEV3"; //wrt to the node red flow
+RTC_DATA_ATTR const char* tsleep = "toDEV3_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
-RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][3];
+RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][7]; //{UUID;RSSI0;RSSI1;RSSI2;RSSI3;RANGE}
 //={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
 RTC_DATA_ATTR String knownUUID[6]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0a8ff39a-1689-409b-8d4c-14444b06d438","6a408c2b-d200-03b3-c249-1cd0da2de6af","af8d5bfc-ce32-3cab-a24a-649478a08f11","43ade1c5-8f74-758a-0c47-2425c116befd","9c5aeb7f-620d-b293-ea4a-c8e1c306ba7b"};
 RTC_DATA_ATTR bool match;
 RTC_DATA_ATTR bool known;
 RTC_DATA_ATTR bool inRange;
-RTC_DATA_ATTR int SSlimit = -80;
+RTC_DATA_ATTR int SSlimit = -100;
 RTC_DATA_ATTR bool match_dev = false;
-int dev_count =0;
+RTC_DATA_ATTR bool IN_RANGE = false;                      // in range flag
+RTC_DATA_ATTR int dev_count =0;
+RTC_DATA_ATTR unsigned int cBufIdx[6]={0,0,0,0,0,0};
+RTC_DATA_ATTR bool calibrate = 0;
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -91,10 +94,10 @@ void MQTTcnct() {
     String clientId = "EN2560Client-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (MQTTclient.connect(clientId.c_str())) {
+    if (MQTTclient.connect(clientId.c_str(),"dev1","group_6$")) {
       Serial.println("MQTT broker connected");
       // Once connected, publish an announcement...
-      //MQTTclient.publish(pubTopic, "hello world");
+      MQTTclient.publish(pubTopic, "hello world");
       // ... and resubscribe
       MQTTclient.subscribe(tsleep,1);
       MQTTclient.setCallback(MQTTcallback);
@@ -117,7 +120,7 @@ void MQTTcnct() {
 }
 //////////////////////// MQTT CALLBACK /////////////////////////////////////////
 void MQTTcallback(char* topic, byte* payload, unsigned int length) {
-  if (strcmp(topic,"toDEV1_tsleep")==0){
+  if (strcmp(topic,"toDEV3_tsleep")==0){
     digitalWrite(LED,HIGH);
     char temp[length];
     for (int i =0; i<length; i++){
@@ -134,6 +137,7 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
+          unsigned int BufIdx;
       //iBeacon
               if (advertisedDevice.haveManufacturerData() == true)
         {
@@ -155,6 +159,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         if (strcmp(oBeacon.getProximityUUID().toString().c_str() , knownUUID[i].c_str()) == 0) 
         {
           match = true; 
+          BufIdx = cBufIdx[i]&0b00000011; //index repeats over 0-3; 4 samples RSSI0,1,2,3
+          cBufIdx[i]++;
           Serial.println("Match");
           break;
         }
@@ -198,7 +204,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
           detectedUUID[uq_devct][2] = "OUT";
           }
         snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-        detectedUUID[uq_devct][1]= rssi_buf;             ////add to the RSSI section of the detected array
+        detectedUUID[uq_devct][BufIdx+1]= rssi_buf;             ////add to the RSSI section of the detected array
+        BufIdx++;
         Serial.println(detectedUUID[uq_devct][0]);
         Serial.println(detectedUUID[uq_devct][1]);
         if(uq_devct <4){
@@ -213,13 +220,14 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       if(match&known){ //device in the list marked as known, just have to update its RSSI
           rssi = advertisedDevice.getRSSI();
            if(rssi> SSlimit){
-          detectedUUID[pass_index][2] = "IN";
+          detectedUUID[pass_index][5] = "IN";
           }
           else{
           detectedUUID[pass_index][2] = "OUT";
           }
           snprintf(rssi_buf,sizeof(rssi_buf),"%d",rssi);
-          detectedUUID[pass_index][1] = rssi_buf;
+          detectedUUID[pass_index][BufIdx+1] = rssi_buf; //RSSIs start at index 1
+          BufIdx++;
         }
           }
           }
@@ -247,9 +255,31 @@ void print_wakeup_reason(){
   }
 }
 
+void in_rangechk(void){
+  for(int i =0;i<MAX_NO_DEV;i++){
+      char tempArray[5];
+      detectedUUID[i][5].toCharArray(tempArray,5);
+      if(strcmp(tempArray,"IN")==0){
+      IN_RANGE = true;
+      break;
+      }
+      else{
+        IN_RANGE = false;
+        }
+    }
+  
+  }
+///////////////////////////////CALIBRATE////////////////////////////////////////////
+void calb(){
+
+  while(calibrate){
+   BLEScanResults foundDevices = pBLEScan->start(2, false);
+   MQTTclient.publish("calibrate3",rssi_buf);
+    }
+  
+  }
 void setup(){
   Serial.begin(115200);
-  Serial.printf("Device count %d\n",dev_count);
   pinMode(LED,OUTPUT);
   digitalWrite(LED,LOW);
   setCpuFrequencyMhz(80);
@@ -293,7 +323,7 @@ void setup(){
   */
   ////////////////////////////////////BLE SCAN INITIALIZATION/////////////////////////////////////////////
   BLEScan *pBLEScan;
-  BLEDevice::init("DEV_1");             //Initialize BLE 
+  BLEDevice::init("DEV_2");             //Initialize BLE 
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks()); //like in MQTT, if a beacon is found run the passed callback function
   pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
@@ -308,44 +338,52 @@ void setup(){
   Serial.println(foundDevices.getCount());
   Serial.println("Scan done!");
   pBLEScan->clearResults();
-Serial.println(dev_count);
+  Serial.println(dev_count);
   if (dev_count==0){
     match_dev =false;
     Serial.println("No BLE devices in the area, I'm going to sleep");
     esp_deep_sleep_start();
     }
-  /*bool IN_RANGE = false; // in range flag
-  for(int i =0;i<MAX_NO_DEV;i++){
-      if(strcmp(detectedUUID[i][2],"IN")==0){
-      IN_RANGE = true;
-      break;
-      }
-    }
-*/
-  else{
-    setup_wifi();
-    MQTTclient.setServer(mqtt_server, 1883);  
-    MQTTcnct();
-    for(int i=0;i<MAX_NO_DEV;i++){
+  in_rangechk();
+  
+//If dev_count is 0, the program will never pass this point.
+  
+    
+if(IN_RANGE){
+  setup_wifi();
+  MQTTclient.setServer(mqtt_server, 1883);  
+  MQTTcnct();
+  
+  }
+  
+while(IN_RANGE&(dev_count!=0)){
+    dev_count=0;
+    for(int i=0;i<MAX_NO_DEV;i++){   //publishing MQTT MSGS for devices found.
       Serial.println("In da loop");
       char pubmsg[MQTT_MSG_BUF];
       char temp1[37];
       detectedUUID[i][0].toCharArray(temp1,37);
       Serial.println("");
       //Serial.println(detectedUUID[i][0]);
-      snprintf(pubmsg, MQTT_MSG_BUF,"{\"DEV\":\"1\",\"UUID\":\"%s\",\"RSSI\":\"%s\",\"RANGE\":\"%s\"}",temp1,detectedUUID[i][1],detectedUUID[i][2]);
+      int meanRSSI = (detectedUUID[i][1].toInt()+detectedUUID[i][2].toInt()+detectedUUID[i][3].toInt()+detectedUUID[i][4].toInt())/4;
+      snprintf(pubmsg, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"3\",\"RSSI\":\"%d\",\"RANGE\":\"%s\"}",temp1,meanRSSI,detectedUUID[i][5]);
       Serial.printf("pubmsg %s\n",pubmsg);
       MQTTclient.publish(pubTopic,pubmsg);
-      uint32_t loopStart = millis(); 
-      while (millis() - loopStart < 100) { 
+      uint32_t loopStart = millis();         //wait a moment for the publish to be success; 
+      while (millis() - loopStart < 1) {   //MQTTclient.loop must be called regularly to maintain connection
           if (!MQTTclient.connected()) { 
-            MQTTcnct(); } 
+            MQTTcnct(); 
+          } 
           else MQTTclient.loop(); 
-    } 
-      }
+      } 
+    }
+   BLEScanResults foundDevices = pBLEScan->start(2, false);
+   Serial.println(dev_count);
+   in_rangechk();
+   Serial.println(IN_RANGE);
+}
 
-      }
-  uint32_t loopStart = millis(); 
+ /* uint32_t loopStart = millis(); 
   while (millis() - loopStart < 15000) { 
     if (!MQTTclient.connected()) { 
       MQTTcnct(); } 
@@ -354,6 +392,7 @@ Serial.println(dev_count);
   for(int i =0; i <5;i++){
     Serial.printf("RSSI %d is %s and is %s range \n",i,detectedUUID[i][1],detectedUUID[i][2]);
     }
+    */
   Serial.println("Going to sleep now");
   Serial.flush();
   esp_deep_sleep_start();
