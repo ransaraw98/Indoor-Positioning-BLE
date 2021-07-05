@@ -47,7 +47,7 @@ RTC_DATA_ATTR const char* pubTopic = "fromDEV2"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV2_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
-RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][7]; //{UUID;RSSI0;RSSI1;RSSI2;RSSI3;RANGE}
+RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][11]; //{UUID;RSSI0;RSSI1;RSSI2;RSSI3;RANGE}
 //={{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}},{{"00"},{"00"}}};
 RTC_DATA_ATTR String knownUUID[6]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0a8ff39a-1689-409b-8d4c-14444b06d438","6a408c2b-d200-03b3-c249-1cd0da2de6af","af8d5bfc-ce32-3cab-a24a-649478a08f11","43ade1c5-8f74-758a-0c47-2425c116befd","9c5aeb7f-620d-b293-ea4a-c8e1c306ba7b"};
 RTC_DATA_ATTR bool match;
@@ -165,7 +165,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         if (strcmp(oBeacon.getProximityUUID().toString().c_str() , knownUUID[i].c_str()) == 0) 
         {
           match = true; 
-          BufIdx = cBufIdx[i]&0b00000011; //index repeats over 0-3; 4 samples RSSI0,1,2,3
+          BufIdx = cBufIdx[i]&0b00000111; //index repeats over 0-3; 4 samples RSSI0,1,2,3
           cBufIdx[i]++;
           Serial.println("Match");
           break;
@@ -374,7 +374,7 @@ while(IN_RANGE&(dev_count!=0)){
       detectedUUID[i][0].toCharArray(temp1,37);
       Serial.println("");
       //Serial.println(detectedUUID[i][0]);
-      int meanRSSI = (detectedUUID[i][1].toInt()+detectedUUID[i][2].toInt()+detectedUUID[i][3].toInt()+detectedUUID[i][4].toInt())/4;
+      int meanRSSI = (detectedUUID[i][1].toInt()+detectedUUID[i][2].toInt()+detectedUUID[i][3].toInt()+detectedUUID[i][4].toInt()+detectedUUID[i][5].toInt()+detectedUUID[i][6].toInt()+detectedUUID[i][7].toInt()+detectedUUID[i][8].toInt())/8;
       snprintf(pubmsg, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"2\",\"RSSI\":\"%d\",\"RANGE\":\"%s\"}",temp1,meanRSSI,detectedUUID[i][5]);
       Serial.printf("pubmsg %s\n",pubmsg);
       MQTTclient.publish(pubTopic,pubmsg);
@@ -386,7 +386,7 @@ while(IN_RANGE&(dev_count!=0)){
           else MQTTclient.loop(); 
       } 
     }
-   BLEScanResults foundDevices = pBLEScan->start(2, false);
+   BLEScanResults foundDevices = pBLEScan->start(3, false);
    Serial.println(dev_count);
    in_rangechk();
    Serial.println(IN_RANGE);
