@@ -38,11 +38,11 @@ Pranav Cherukupalli <cherukupallip@gmail.com>
 RTC_DATA_ATTR int TIME_TO_SLEEP = 15;
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR BLEScan* pBLEScan;
-RTC_DATA_ATTR const char* ssid     = "malmi_villa";
-RTC_DATA_ATTR const char* password = "86467223E";
+RTC_DATA_ATTR const char* ssid     = "AndroidAPE6C9";
+RTC_DATA_ATTR const char* password = "123456789";
 RTC_DATA_ATTR int rssi = 0;
 RTC_DATA_ATTR char rssi_buf[5];
-RTC_DATA_ATTR const char* mqtt_server = "192.168.1.14";
+RTC_DATA_ATTR const char* mqtt_server = "192.168.43.195";
 RTC_DATA_ATTR const char* pubTopic = "fromDEV3"; //wrt to the node red flow
 RTC_DATA_ATTR const char* tsleep = "toDEV3_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
@@ -58,7 +58,7 @@ RTC_DATA_ATTR bool match_dev = false;
 RTC_DATA_ATTR bool IN_RANGE = false;                      // in range flag
 RTC_DATA_ATTR int dev_count =0;
 RTC_DATA_ATTR unsigned int cBufIdx[6]={0,0,0,0,0,0};
-RTC_DATA_ATTR bool calibrate = 0;
+RTC_DATA_ATTR unsigned int calibrate = 0;
 
 RTC_DATA_ATTR WiFiClient espClient;
 RTC_DATA_ATTR PubSubClient MQTTclient(espClient);
@@ -100,6 +100,7 @@ void MQTTcnct() {
       MQTTclient.publish(pubTopic, "hello world");
       // ... and resubscribe
       MQTTclient.subscribe(tsleep,1);
+      MQTTclient.subscribe("calibration",1);
       MQTTclient.setCallback(MQTTcallback);
     } else {                                //this part handles if MQTT connection fails after a successful WiFi connection
       if(attempts >=5){
@@ -129,8 +130,13 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
     TIME_TO_SLEEP = atoi(temp);
     // whatever you want for this topic
   }
- 
-}
+ if (strcmp(topic,"calibration")==0){
+    calibrate ^= 1;
+      }
+
+
+    // whatever you want for this topic
+  }
 
 
 ///////////////////// BLE callback on beacon receive///////////////////////////////////////////////
@@ -272,9 +278,11 @@ void in_rangechk(void){
 ///////////////////////////////CALIBRATE////////////////////////////////////////////
 void calb(){
 
-  while(calibrate){
-   BLEScanResults foundDevices = pBLEScan->start(2, false);
-   MQTTclient.publish("calibrate3",rssi_buf);
+  if(calibrate==1){
+    pubTopic = "clbrte03";
+    }
+  else{
+    pubTopic = "fromDEV3";
     }
   
   }
@@ -358,6 +366,7 @@ if(IN_RANGE){
   
 while(IN_RANGE&(dev_count!=0)){
     dev_count=0;
+    calb();
     for(int i=0;i<MAX_NO_DEV;i++){   //publishing MQTT MSGS for devices found.
       Serial.println("In da loop");
       char pubmsg[MQTT_MSG_BUF];
@@ -394,6 +403,17 @@ while(IN_RANGE&(dev_count!=0)){
     }
     */
   Serial.println("Going to sleep now");
+  for(int i =0; i<3;i++){
+  char lastwill[MQTT_MSG_BUF];
+  char temp2[37];
+  knownUUID[i].toCharArray(temp2,37);
+  snprintf(lastwill, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"3\",\"RSSI\":\"-100\"}",temp2);
+  Serial.printf("pubmsg %s\n",lastwill);
+  MQTTclient.publish(pubTopic,lastwill);
+  MQTTclient.loop();
+  delay(10);
+    }
+  
   Serial.flush();
   esp_deep_sleep_start();
   Serial.println("This will never be printed");
