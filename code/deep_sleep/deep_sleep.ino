@@ -43,8 +43,8 @@ RTC_DATA_ATTR const char* password = "123456789";
 RTC_DATA_ATTR int rssi = 0;
 RTC_DATA_ATTR char rssi_buf[5];
 RTC_DATA_ATTR const char* mqtt_server = "192.168.43.195";
-RTC_DATA_ATTR const char* pubTopic = "fromDEV3"; //wrt to the node red flow
-RTC_DATA_ATTR const char* tsleep = "toDEV3_tsleep";  //wrt to the node red flow
+RTC_DATA_ATTR const char* pubTopic = "fromDEV2"; //wrt to the node red flow
+RTC_DATA_ATTR const char* tsleep = "toDEV2_tsleep";  //wrt to the node red flow
 RTC_DATA_ATTR int scanTime = 3; //BLE scan period In seconds
 RTC_DATA_ATTR int uq_devct =0;
 RTC_DATA_ATTR String detectedUUID[MAX_NO_DEV][7]; //{UUID;RSSI0;RSSI1;RSSI2;RSSI3;RANGE}
@@ -121,7 +121,7 @@ void MQTTcnct() {
 }
 //////////////////////// MQTT CALLBACK /////////////////////////////////////////
 void MQTTcallback(char* topic, byte* payload, unsigned int length) {
-  if (strcmp(topic,"toDEV3_tsleep")==0){
+  if (strcmp(topic,"toDEV2_tsleep")==0){
     digitalWrite(LED,HIGH);
     char temp[length];
     for (int i =0; i<length; i++){
@@ -279,10 +279,10 @@ void in_rangechk(void){
 void calb(){
 
   if(calibrate==1){
-    pubTopic = "clbrte03";
+    pubTopic = "clbrte02";
     }
   else{
-    pubTopic = "fromDEV3";
+    pubTopic = "fromDEV2";
     }
   
   }
@@ -375,7 +375,7 @@ while(IN_RANGE&(dev_count!=0)){
       Serial.println("");
       //Serial.println(detectedUUID[i][0]);
       int meanRSSI = (detectedUUID[i][1].toInt()+detectedUUID[i][2].toInt()+detectedUUID[i][3].toInt()+detectedUUID[i][4].toInt())/4;
-      snprintf(pubmsg, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"3\",\"RSSI\":\"%d\",\"RANGE\":\"%s\"}",temp1,meanRSSI,detectedUUID[i][5]);
+      snprintf(pubmsg, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"2\",\"RSSI\":\"%d\",\"RANGE\":\"%s\"}",temp1,meanRSSI,detectedUUID[i][5]);
       Serial.printf("pubmsg %s\n",pubmsg);
       MQTTclient.publish(pubTopic,pubmsg);
       uint32_t loopStart = millis();         //wait a moment for the publish to be success; 
@@ -407,7 +407,7 @@ while(IN_RANGE&(dev_count!=0)){
   char lastwill[MQTT_MSG_BUF];
   char temp2[37];
   knownUUID[i].toCharArray(temp2,37);
-  snprintf(lastwill, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"3\",\"RSSI\":\"-100\"}",temp2);
+  snprintf(lastwill, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"2\",\"RSSI\":\"-100\"}",temp2);
   Serial.printf("pubmsg %s\n",lastwill);
   MQTTclient.publish(pubTopic,lastwill);
   MQTTclient.loop();
