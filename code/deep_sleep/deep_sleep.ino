@@ -53,7 +53,7 @@ RTC_DATA_ATTR String knownUUID[6]={"80c350a9-f603-26b0-ae4d-67292f81dab9","0a8ff
 RTC_DATA_ATTR bool match;
 RTC_DATA_ATTR bool known;
 RTC_DATA_ATTR bool inRange;
-RTC_DATA_ATTR int SSlimit = -100;
+RTC_DATA_ATTR int SSlimit = -120;
 RTC_DATA_ATTR bool match_dev = false;
 RTC_DATA_ATTR bool IN_RANGE = false;                      // in range flag
 RTC_DATA_ATTR int dev_count =0;
@@ -121,7 +121,7 @@ void MQTTcnct() {
 }
 //////////////////////// MQTT CALLBACK /////////////////////////////////////////
 void MQTTcallback(char* topic, byte* payload, unsigned int length) {
-  if (strcmp(topic,"toDEV2_tsleep")==0){
+ /* if (strcmp(topic,"toDEV3_tsleep")==0){
     digitalWrite(LED,HIGH);
     char temp[length];
     for (int i =0; i<length; i++){
@@ -129,10 +129,17 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
       }
     TIME_TO_SLEEP = atoi(temp);
     // whatever you want for this topic
-  }
- if (strcmp(topic,"calibration")==0){
-    calibrate ^= 1;
-      }
+  }*/
+ if (strcmp(topic,"calibrationON")==0){
+  digitalWrite(LED,LOW);
+calibrate =1;
+Serial.println("Calibration ON");
+}
+ if (strcmp(topic,"calibrationOFF")==0){
+  digitalWrite(LED,HIGH);
+calibrate =0;
+Serial.println("Calibration OFF");
+}
 
 
     // whatever you want for this topic
@@ -277,9 +284,13 @@ void in_rangechk(void){
   }
 ///////////////////////////////CALIBRATE////////////////////////////////////////////
 void calb(){
-
+  unsigned int start = millis();
+  while(millis()-start>100){
+    MQTTclient.loop(); 
+    } 
   if(calibrate==1){
     pubTopic = "clbrte02";
+   
     }
   else{
     pubTopic = "fromDEV2";
@@ -289,7 +300,7 @@ void calb(){
 void setup(){
   Serial.begin(115200);
   pinMode(LED,OUTPUT);
-  digitalWrite(LED,LOW);
+  //digitalWrite(LED,LOW);
   setCpuFrequencyMhz(80);
   delay(1000); //Take some time to open up the Serial Monitor
   Serial.println(getCpuFrequencyMhz());
@@ -331,7 +342,7 @@ void setup(){
   */
   ////////////////////////////////////BLE SCAN INITIALIZATION/////////////////////////////////////////////
   BLEScan *pBLEScan;
-  BLEDevice::init("DEV_2");             //Initialize BLE 
+  BLEDevice::init("DEV_3");             //Initialize BLE 
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks()); //like in MQTT, if a beacon is found run the passed callback function
   pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
@@ -350,7 +361,7 @@ void setup(){
   if (dev_count==0){
     match_dev =false;
     Serial.println("No BLE devices in the area, I'm going to sleep");
-    esp_deep_sleep_start();
+    //esp_deep_sleep_start();
     }
   in_rangechk();
   
@@ -364,9 +375,9 @@ if(IN_RANGE){
   
   }
   
-while(IN_RANGE&(dev_count!=0)){
+while(dev_count!=0){
     dev_count=0;
-    calb();
+    //calb();
     for(int i=0;i<MAX_NO_DEV;i++){   //publishing MQTT MSGS for devices found.
       Serial.println("In da loop");
       char pubmsg[MQTT_MSG_BUF];
@@ -386,10 +397,8 @@ while(IN_RANGE&(dev_count!=0)){
           else MQTTclient.loop(); 
       } 
     }
-   BLEScanResults foundDevices = pBLEScan->start(3, false);
+   BLEScanResults foundDevices = pBLEScan->start(2, false);
    Serial.println(dev_count);
-   in_rangechk();
-   Serial.println(IN_RANGE);
 }
 
  /* uint32_t loopStart = millis(); 
@@ -407,7 +416,7 @@ while(IN_RANGE&(dev_count!=0)){
   char lastwill[MQTT_MSG_BUF];
   char temp2[37];
   knownUUID[i].toCharArray(temp2,37);
-  snprintf(lastwill, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"2\",\"RSSI\":\"-100\"}",temp2);
+  snprintf(lastwill, MQTT_MSG_BUF,"{\"UUID\":\"%s\",\"SCANNER\":\"2\",\"RSSI\":\"-120\"}",temp2);
   Serial.printf("pubmsg %s\n",lastwill);
   MQTTclient.publish(pubTopic,lastwill);
   MQTTclient.loop();
