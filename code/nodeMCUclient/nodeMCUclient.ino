@@ -11,13 +11,13 @@
 #include <PubSubClient.h>
 #define LED 5
 #ifndef STASSID
-#define STASSID "AndroidAPE6C9"
-#define STAPSK  "123456789"
+#define STASSID "malmi_villa"
+#define STAPSK  "86467223E"
 #endif
-const char* mqtt_server = "192.168.43.195";
+const char* mqtt_server = "192.168.1.113";
 const char* ssid = STASSID;
 const char* password = STAPSK;
-
+int stat = 0; 
 
 WiFiClient espClient;
 PubSubClient MQTTclient(espClient);
@@ -65,14 +65,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
   // Switch on the LED if an 1 was received as first character
-  if ((char)payload[0] == '1') {
+  if (((char)payload[0] == '1')&& (stat ==0)) {
     digitalWrite(BUILTIN_LED, LOW); 
     digitalWrite(LED,LOW);// Turn the LED on (Note that LOW is the voltage level
+    stat =1;
     // but actually the LED is on; this is because
     // it is active low on the ESP-01)
-  } else {
+  } else if(((char)payload[0] == '0')&& (stat ==1)) {
     digitalWrite(BUILTIN_LED, HIGH);
     digitalWrite(LED,HIGH); // Turn the LED off by making the voltage HIGH
+    stat =0;
   }
 
 }
@@ -153,11 +155,12 @@ void loop() {
   } else {
     Serial.println(F("invalid request"));
     val = digitalRead(LED_BUILTIN);
+    digitalWrite(LED, val);
   }
 
   // Set LED according to the request
   digitalWrite(LED_BUILTIN, val);
-
+  digitalWrite(LED, val);
   // read/ignore the rest of the request
   // do not client.flush(): it is for output only, see below
   while (client.available()) {
@@ -168,13 +171,13 @@ void loop() {
   // Send the response to the client
   // it is OK for multiple small client.print/write,
   // because nagle algorithm will group them into one single packet
-  client.print(F("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nGPIO is now "));
-  client.print((val) ? F("high") : F("low"));
+  client.print(F("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\Positional light is now "));
+  client.print((val) ? F("OFF") : F("ON"));
   client.print(F("<br><br>Click <a href='http://"));
   client.print(WiFi.localIP());
-  client.print(F("/gpio/1'>here</a> to switch LED GPIO on, or <a href='http://"));
+  client.print(F("/gpio/1'>here</a> to switch LIGHT OFF, or <a href='http://"));
   client.print(WiFi.localIP());
-  client.print(F("/gpio/0'>here</a> to switch LED GPIO off.</html>"));
+  client.print(F("/gpio/0'>here</a> to switch LIGHT ON.</html>"));
 
   // The client will actually be *flushed* then disconnected
   // when the function returns and 'client' object is destroyed (out-of-scope)
